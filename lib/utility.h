@@ -60,6 +60,10 @@ std::map<int, int> devices_enum = {
 const float kSiPM_x_dimension = 1.5;
 const float kSiPM_y_dimension = 1.5;
 
+//  Legacy electronics to detector
+int eo2do[32] = {22, 20, 18, 16, 24, 26, 28, 30, 25, 27, 29, 31, 23, 21, 19, 17,
+                 9, 11, 13, 15, 7, 5, 3, 1, 6, 4, 2, 0, 8, 10, 12, 14};
+
 //  General utilities
 //  === Cartesian to Polar
 inline std::array<float, 2> cartesian_to_polar(std::array<float, 2> target, std::array<float, 2> center_shift = {0., 0.})
@@ -182,8 +186,43 @@ void fill_with_ring_coverage(TH2F *target, std::array<float, 3> ring_parameters,
   }
 }
 //  === Ring finders & fittera
+template <bool return_selected = true>
+recodata select_points(recodata reco_data, std::array<float, 3> ring_data, float radius_cut)
+{
+  recodata selected_reco_data;
+  recodata discarded_reco_data;
+  selected_reco_data.n = 0;
+  discarded_reco_data.n = 0;
+  for (int iPnt = 0; iPnt < reco_data.n; iPnt++)
+  {
+    auto x_shift = reco_data.x[iPnt] - ring_data[0];
+    auto y_shift = reco_data.y[iPnt] - ring_data[1];
+    auto current_radius = sqrt(x_shift * x_shift + y_shift * y_shift);
+    if ((fabs(reco_data.t[0]) > 20))
+    {
+      discarded_reco_data.x[discarded_reco_data.n] = reco_data.x[iPnt];
+      discarded_reco_data.y[discarded_reco_data.n] = reco_data.y[iPnt];
+      discarded_reco_data.t[discarded_reco_data.n] = reco_data.t[iPnt];
+      discarded_reco_data.n++;
+      continue;
+    }
+    if (fabs(current_radius - ring_data[2]) > radius_cut)
+    {
+      discarded_reco_data.x[discarded_reco_data.n] = reco_data.x[iPnt];
+      discarded_reco_data.y[discarded_reco_data.n] = reco_data.y[iPnt];
+      discarded_reco_data.t[discarded_reco_data.n] = reco_data.t[iPnt];
+      discarded_reco_data.n++;
+      continue;
+    }
+    selected_reco_data.x[selected_reco_data.n] = reco_data.x[iPnt];
+    selected_reco_data.y[selected_reco_data.n] = reco_data.y[iPnt];
+    selected_reco_data.t[selected_reco_data.n] = reco_data.t[iPnt];
+    selected_reco_data.n++;
+  }
+  return return_selected ? selected_reco_data : discarded_reco_data;
+}
 std::vector<std::tuple<float, float, int>>
-find_peaks(TH1F *original_histo, int bin_span = 3, float cutoff_threshold = 0.33)
+find_peaks(TH1F *original_histo, int bin_span = 4, float cutoff_threshold = 0.33)
 {
   //  Result
   std::vector<std::tuple<float, float, int>> result;
@@ -376,6 +415,68 @@ fit_circle(TGraph *gTarget, std::array<float, 3> initial_values)
 }
 template <bool fix_XY = true>
 circle_fit_results
+fit_reco_data(recodata reco_data, std::array<float, 3> initial_values)
+{
+  circle_fit_results result;
+
+  //  Chi2 minimisation for points in a circle
+  auto chi2_function = [&](const double *parameters)
+  {
+    float chi2 = 0;
+    for (auto iPnt = 0; iPnt < reco_data.n; iPnt++)
+    {
+      double delta_x = reco_data.x[iPnt] - parameters[0];
+      double delta_y = reco_data.y[iPnt] - parameters[1];
+      double delta_r = parameters[2] - std::sqrt(delta_x * delta_x + delta_y * delta_y);
+      chi2 += delta_r * delta_r;
+    }
+    return chi2;
+  };
+
+  // wrap chi2 function in a function object for the fit
+  ROOT::Math::Functor fit_function(chi2_function, 3);
+  ROOT::Fit::Fitter fitter;
+
+  //  Set initial values and variables names
+  double internal_initial_values[3] = {initial_values[0], initial_values[1], initial_values[2]};
+  fitter.SetFCN(fit_function, internal_initial_values);
+  fitter.Config().ParSettings(0).SetName("x0");
+  fitter.Config().ParSettings(1).SetName("y0");
+  fitter.Config().ParSettings(2).SetName("R");
+  fitter.Config().ParSettings(2).SetLowerLimit(0);
+  if (fix_XY)
+  {
+    fitter.Config().ParSettings(0).Fix();
+    fitter.Config().ParSettings(1).Fix();
+  }
+
+  //  Fitting
+  if (!fitter.FitFCN())
+  {
+    // Error("fit_circle", "Fit failed");
+    //  return {{{-2., 0.}, {-2., 0.}, {-2., 0.}}};
+  }
+  const ROOT::Fit::FitResult &fit_result = fitter.Result();
+
+  auto iTer = -1;
+  for (auto current_parameter : fit_result.Parameters())
+  {
+    iTer++;
+    result[iTer][0] = current_parameter;
+    result[iTer][1] = fit_result.Errors()[iTer];
+  }
+
+  //  Calculate chi2
+  double *test = new double[3];
+  test[0] = result[0][0];
+  test[1] = result[1][0];
+  test[2] = result[2][0];
+  auto myChi2 = chi2_function(test);
+
+  return result;
+}
+template <bool fix_XY = true>
+circle_fit_results
 fit_circles(std::vector<TGraphErrors *> gTargets, std::array<float, 2> center_guess, std::vector<float> radiuses_guesses)
 {
   //   Result
@@ -385,7 +486,7 @@ fit_circles(std::vector<TGraphErrors *> gTargets, std::array<float, 2> center_gu
     return result;
 
   if (gTargets.size() == 1)
-    return fit_circle<false>(gTargets[0], {center_guess[0], center_guess[1], radiuses_guesses[0]});
+    return fit_circle<fix_XY>(gTargets[0], {center_guess[0], center_guess[1], radiuses_guesses[0]});
 
   //  Chi2 minimisation for points in a circle
   auto chi2_function = [&](const double *parameters)
@@ -406,6 +507,8 @@ fit_circles(std::vector<TGraphErrors *> gTargets, std::array<float, 2> center_gu
     return chi2;
   };
 
+  cout << "[INFO] " << gTargets.size() << endl;
+
   // wrap chi2 function in a function object for the fit
   ROOT::Math::Functor fit_function(chi2_function, 2 + gTargets.size());
   ROOT::Fit::Fitter fitter;
@@ -425,6 +528,7 @@ fit_circles(std::vector<TGraphErrors *> gTargets, std::array<float, 2> center_gu
   fitter.SetFCN(fit_function, internal_initial_values);
   fitter.Config().ParSettings(0).SetName("x0");
   fitter.Config().ParSettings(1).SetName("y0");
+  cout << "[INFO] end " << endl;
 
   iTer = -1;
   for (auto current_radius : radiuses_guesses)
@@ -482,7 +586,7 @@ std::vector<circle_fit_results> fit_multiple_rings(std::vector<std::array<TH1F *
     {
       gfinal_rings[current_n_circle]->SetPoint(gfinal_rings[current_n_circle]->GetN(), current_point[0], current_point[1]);
     }
-    auto circle_fit = fit_circle<false>(gfinal_rings[current_n_circle], {0, 0, 20});
+    auto circle_fit = fit_circle<false>(gfinal_rings[current_n_circle], {0, 0, 0});
     final_rings.push_back(circle_fit);
   }
 
@@ -504,8 +608,8 @@ std::vector<circle_fit_results> fit_multiple_rings(std::vector<std::array<TH1F *
 
   return final_rings;
 }
-template <bool simultaneous_fit = true>
-std::vector<circle_fit_results> fit_multiple_rings(TH2F *persistance_2D, std::vector<std::array<float, 2>> slices = {{-0., +0.}, {-12., -12.}, {+12., +12.}})
+template <bool simultaneous_fit = false>
+std::vector<circle_fit_results> fit_multiple_rings(TH2F *persistance_2D, std::vector<std::array<float, 2>> slices = {{-0., +0.}, {-10., -10.}, {+10., +10.}})
 {
   //  Clone target to manipulate
   auto target_persistance_2D = (TH2F *)(persistance_2D->Clone("target_persistance_2D"));
@@ -625,14 +729,13 @@ TCanvas *plot_check_coordinates(TH2F *hPersistance2D, std::vector<circle_fit_res
     cDrawResult->cd(2);
 
     lLatex->SetTextSize(0.045);
-    lLatex->DrawLatexNDC(0.02, 0.95 + iRing * 0.25, Form("Ring %i", iRing));
+    lLatex->DrawLatexNDC(0.02, 0.95 - iRing * 0.25, Form("Ring %i", iRing));
 
     lLatex->SetTextSize(0.03);
-    lLatex->DrawLatexNDC(0.02, 0.91 + iRing * 0.25, Form("Guess (mm):"));
-    lLatex->DrawLatexNDC(0.18, 0.91 + iRing * 0.25, Form("X_{0} : %.2f#pm%.2f", current_ring[0][0], current_ring[0][1]));
-    lLatex->DrawLatexNDC(0.36, 0.91 + iRing * 0.25, Form("Y_{0} : %.2f#pm%.2f", current_ring[1][0], current_ring[1][1]));
-    lLatex->DrawLatexNDC(0.54, 0.91 + iRing * 0.25, Form("R_{0} : %.2f#pm%.2f", current_ring[2][0], current_ring[2][1]));
-    lLatex->DrawLatexNDC(0.72, 0.91 + iRing * 0.25, Form("#sigma_{R} : %.2f#pm%.2f", 0., 0.));
+    lLatex->DrawLatexNDC(0.02, 0.91 - iRing * 0.25, Form("Guess (mm):"));
+    lLatex->DrawLatexNDC(0.20, 0.91 - iRing * 0.25, Form("X_{0} : %.2f#pm%.2f", current_ring[0][0], current_ring[0][1]));
+    lLatex->DrawLatexNDC(0.39, 0.91 - iRing * 0.25, Form("Y_{0} : %.2f#pm%.2f", current_ring[1][0], current_ring[1][1]));
+    lLatex->DrawLatexNDC(0.58, 0.91 - iRing * 0.25, Form("R_{0} : %.2f#pm%.2f", current_ring[2][0], current_ring[2][1]));
   }
   return cDrawResult;
 }
