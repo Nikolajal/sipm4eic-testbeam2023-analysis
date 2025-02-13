@@ -23,7 +23,7 @@ std::map<std::string, bool> apply_selection = {
 int cherenkov_selection_window    = 8; // clock cycles
 int cherenkov_selection_threshold = 3; // 
 
-#ifdef TESTBEAM2023
+#if defined TESTBEAM2023
 int TRIGGER0_device = 192;
 int TRIGGER1_device = 0;
 int TRIGGER2_device = 0;
@@ -32,7 +32,7 @@ int TRIGGER0_offset = 112;
 int TRIGGER1_offset = 0;
 int TRIGGER2_offset = 0;
 int TRIGGER3_offset = 0;
-#elifdef TESTBEAM2024
+#elif defined TESTBEAM2024
 int TRIGGER0_device = 193;
 int TRIGGER1_device = 194;
 int TRIGGER2_device = 195;
@@ -52,10 +52,10 @@ int TRIGGER2_offset = 0;
 int TRIGGER3_offset = 0;
 #endif
 
-#ifdef TESTBEAM2023
+#if defined TESTBEAM2023
 int TIMING1_device = 207, TIMING1_chip = 4;
 int TIMING2_device = 207, TIMING2_chip = 5;
-#elifdef TESTBEAM2024
+#elif defined TESTBEAM2024
 int TIMING1_device = 200, TIMING1_chip = 2;
 int TIMING2_device = 200, TIMING2_chip = 4;
 #else
