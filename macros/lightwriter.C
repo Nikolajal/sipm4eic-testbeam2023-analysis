@@ -17,8 +17,12 @@ std::map<std::string, bool> apply_selection = {
   { "timingAND"   , false } ,
   { "trackingOR"  , false } ,
   { "trackingAND" , false } ,
-  { "cherenkov"   , false }
+  { "framenumber" , false } ,
+  { "cherenkov"   , false } 
 };
+
+int framenumber_selection_min = 0;     // frame number
+int framenumber_selection_max = 20000;
 
 int cherenkov_selection_window    = 8; // clock cycles
 int cherenkov_selection_threshold = 3; // 
@@ -98,6 +102,13 @@ lightwriter(std::vector<std::string> filenames, std::string outfilename, std::st
 		  << "window = " << cherenkov_selection_window
 		  << " | "
 		  << "threshold = " << cherenkov_selection_threshold
+		  << std::endl;
+      }
+      if (name == "framenumber") {
+	std::cout << " --- framenumber selection: "
+		  << "min = " << framenumber_selection_min
+		  << " | "
+		  << "max = " << framenumber_selection_max
 		  << std::endl;
       }
     }
@@ -234,6 +245,9 @@ lightwriter(std::vector<std::string> filenames, std::string outfilename, std::st
       if ( apply_selection["trackingOR"] && (TRACKING1_n == 0 && TRACKING2_n == 0) ) continue;
       if ( apply_selection["trackingAND"] && (TRACKING1_n == 0 || TRACKING2_n == 0) ) continue;
 
+      /** selection on frame number **/
+      if ( apply_selection["framenumber"] && (iframe < framenumber_selection_min || iframe > framenumber_selection_max) ) continue;
+      
       /** auto selection on cherenkov hits **/
       if ( apply_selection["cherenkov"] ) {
 	hTime->Reset();
