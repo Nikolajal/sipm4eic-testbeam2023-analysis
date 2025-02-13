@@ -168,9 +168,9 @@ std::map<int, std::vector<int>> matrix_mapping = {
           12, 13, 14, 15, 11, 10, 9, 8, 4, 5, 6, 7, 3, 2, 1, 0 } }
 };
   
-#ifdef TESTBEAM2023
+#if defined TESTBEAM2023
 bool rotateme[8] = {true, true, true, true, false, true, true, false};
-#elifdef TESTBEAM2024
+#elif defined TESTBEAM2024
 bool rotateme[8] = {true, true, true, true, true, true, true, true};
 #endif
 
