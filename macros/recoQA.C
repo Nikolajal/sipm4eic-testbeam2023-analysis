@@ -44,14 +44,14 @@ void recoQA(std::string input_file = "recodata_2.root", std::string output_file 
         list_of_available_SiPMs.push_back({reco_data.x[iPnt], reco_data.y[iPnt]});
     }
   }
-  /*
+  
   for (auto iPDU = 0; iPDU < 8; iPDU++)
       for (auto iCol = 0; iCol < 16; iCol++)
           for (auto iRow = 0; iRow < 16; iRow++)
               fill_with_SiPM_coverage(hMap_fullsetup_SiPM, sipm4eic::get_position({iPDU, iCol, iRow}));
   for (auto current_position : list_of_available_SiPMs)
       fill_with_SiPM_coverage(hMap_availsetup_SiPM, current_position);
-*/
+
   auto found_rings = fit_multiple_rings(hPersistance2D_initial_guess);
 
   //  === Graphics

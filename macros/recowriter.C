@@ -1,7 +1,7 @@
 #include "../lib/lightio.h"
 #include "../lib/mapping.h"
 
-// #define TREFCUT
+#define TREFCUT
 float Tref_min = 32;
 float Tref_max = 224;
 
@@ -92,18 +92,18 @@ void recowriter(std::string lightdata_infilename,
                 std::string finecalib_infilename = "",
                 EReferenceTime_t reference_method = kTrigger)
 {
-
-  /** read input data **/
+  //  Read from decoded light data
   auto io = new sipm4eic::lightio;
   io->read_from_tree(lightdata_infilename);
 
-  /** read calib data **/
-  //  sipm4eic::lightdata::load_fine_calibration(finecalib_infilename);
-
-  /** read calib data **/
+  //  Load fine calibration
   sipm4eic::lightdata::load_fine_calibration(finecalib_infilename);
 
-  /** prepare output data **/
+  //  Hit map for visualization
+  TH1F *h_time_dist = new TH1F("h_time_dist", "time dist", 1000, -100, 100);
+  TH2F *h_hit_map = new TH2F("h_hit_map", ";x (mm);y (mm)", 396, -99, 99, 396, -99, 99);
+
+  // prepare output data
   unsigned short spill;
   unsigned int frame;
   float tref;
@@ -126,9 +126,10 @@ void recowriter(std::string lightdata_infilename,
   tout->Branch("t", &t, "t[n]/F");
 
   int n_spills = 0;
+  std::cout << "[INFO] Starting processing spill: " << n_spills << std::endl;
   while (io->next_spill())
   {
-    std::cout << " --- processing spill: " << n_spills << std::endl;
+    std::cout << "[INFO] Processing spill: " << n_spills << std::endl;
     spill = n_spills;
 
     while (io->next_frame())
@@ -140,8 +141,8 @@ void recowriter(std::string lightdata_infilename,
 
       /** reference time information **/
       auto Tref = reference_time(io, reference_method);
-     if (Tref == -666.)
-       continue;
+      if (Tref == -666.)
+        continue;
 #ifdef TREFCUT
       if (Tref < Tref_min || Tref > Tref_max)
         continue;
@@ -164,7 +165,7 @@ void recowriter(std::string lightdata_infilename,
         auto delta = time - Tref;
 
         if (fabs(delta) > 25.)
-         continue;
+          continue;
 
         auto geo = sipm4eic::get_geo(hit);
         auto pos = sipm4eic::get_position(geo);
@@ -173,9 +174,10 @@ void recowriter(std::string lightdata_infilename,
         x[n] = pos[0];
         y[n] = pos[1];
         t[n] = delta * sipm4eic::lightdata::coarse_to_ns;
+        h_time_dist->Fill(delta);
+        h_hit_map->Fill(gRandom->Uniform(pos[0] - 1.5, pos[0] + 1.5), gRandom->Uniform(pos[1] - 1.5, pos[1] + 1.5));
         ++n;
       }
-
       tout->Fill();
     }
     ++n_spills;
@@ -187,4 +189,9 @@ void recowriter(std::string lightdata_infilename,
   fout->cd();
   tout->Write();
   fout->Close();
+
+  TCanvas *c1 = new TCanvas("c1", "c1", 800, 600);
+  h_time_dist->Draw();
+  TCanvas *c2 = new TCanvas("c2", "c2", 800, 800);
+  h_hit_map->Draw("colz");
 }

@@ -8,7 +8,7 @@
 
 const int frame_size = 256; // 256 is golden for TB
 
-bool apply_minimal_selection = false;
+bool apply_minimal_selection = true;
 bool apply_trigger0_selection = false; // should be true
 bool apply_trigger1_selection = false;
 bool apply_trigger2_selection = false;
@@ -37,7 +37,7 @@ int TRIGGER1_offset = 105;
 int TRIGGER2_offset = 105;
 int TRIGGER3_offset = 107;
 #else
-int TRIGGER0_device = 192;
+int TRIGGER0_device = 196;
 int TRIGGER1_device = 0;
 int TRIGGER2_device = 0;
 int TRIGGER3_device = 0;
@@ -78,7 +78,7 @@ std::vector<std::string> devices = {
 #elif defined(TESTBEAM2025)
 std::vector<std::string> devices = {
     "rdo-192",
-    "rdo-193",
+    /*"rdo-193",*/
     "rdo-194",
     "rdo-195",
     "rdo-196",
@@ -91,26 +91,15 @@ std::vector<std::string> devices = {
 void lightwriter(std::vector<std::string> filenames, std::string outfilename, std::string fineoutfilename, unsigned int max_spill = kMaxUInt, bool verbose = false)
 {
 
-  /**
-   ** CREATE OUTPUT TREE
-   **/
-
   auto io = new sipm4eic::lightio;
   io->write_to_tree(outfilename);
 
-  /**
-   ** FINE OUTPUT
-   **/
-
   std::map<int, TH2F *> h_fine_device;
-
-  /**
-   ** INITIALIZE FRAMER AND PROCESS
-   **/
 
   std::cout << " --- initialize framer: frame size = " << frame_size << std::endl;
   sipm4eic::framer framer(filenames, frame_size);
   framer.verbose(verbose);
+
 #ifdef TRIGGER_OFFSET
   framer.set_trigger_coarse_offset(TRIGGER0_device, TRIGGER0_offset);
   framer.set_trigger_coarse_offset(TRIGGER1_device, TRIGGER1_offset);
@@ -299,21 +288,17 @@ void lightwriter(std::vector<std::string> filenames, std::string outfilename, st
           }
         }
 
-      } /** end of loop over devices and hits **/
+      } // end of loop over devices and hits
 
       io->add_frame();
       ++n_frames;
 
-    } /** end of loop over frames **/
+    } // end of loop over frames
 
     io->fill();
     ++n_spills;
 
-  } /** end of loop over spills **/
-
-  /**
-   ** WRITE OUTPUT TO FILE
-   **/
+  } // end of loop over spills
 
   std::cout << " --- writing light data output file: " << outfilename << std::endl;
   io->write_and_close();
@@ -334,10 +319,6 @@ void lightwriter(std::vector<std::string> filenames, std::string outfilename, st
 void lightwriter(std::string dirname, std::string outfilename, std::string fineoutfilename, unsigned int max_spill = kMaxUInt, bool verbose = false)
 {
 
-  /**
-   ** BUILD INPUT FILE LIST
-   **/
-
   std::vector<std::string> filenames;
   for (auto device : devices)
   {
@@ -346,6 +327,8 @@ void lightwriter(std::string dirname, std::string outfilename, std::string fineo
       std::string filename = dirname + "/" + device + "/decoded/alcdaq.fifo_" + std::to_string(ififo) + ".root";
       filenames.push_back(filename);
     }
+    std::string filename = dirname + "/" + device + "/decoded/alcdaq.fifo_" + std::to_string(99) + ".root";
+    filenames.push_back(filename);
   }
 
   lightwriter(filenames, outfilename, fineoutfilename, max_spill, verbose);
